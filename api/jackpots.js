@@ -1,52 +1,30 @@
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Cache-Control', 's-maxage=3600'); // cache for 1 hour
-
+  res.setHeader('Cache-Control', 's-maxage=3600');
   try {
-    const [pb, mm] = await Promise.allSettled([
-      fetchPowerball(),
-      fetchMegaMillions(),
-    ]);
-
+    const r = await fetch('https://api.apiverve.com/v1/lottery', {
+      headers: {
+        'x-api-key': process.env.APIVERVE_KEY,
+        'Content-Type': 'application/json',
+      }
+    });
+    const d = await r.json();
+    console.log('APIVerve response:', JSON.stringify(d).slice(0, 600));
+    const games = d?.data || d?.results || (Array.isArray(d) ? d : []);
+    const find = (name) => games.find(g =>
+      g?.name?.toLowerCase().includes(name) ||
+      g?.game?.toLowerCase().includes(name) ||
+      g?.lottery?.toLowerCase().includes(name)
+    );
+    const pb = find('powerball');
+    const mm = find('mega');
+    const jackpot = (g) => g?.jackpot || g?.jackpotAmount || g?.prize || g?.nextJackpot || g?.current_jackpot || null;
     res.json({
-      powerball:    pb.status === 'fulfilled' ? pb.value : null,
-      megamillions: mm.status === 'fulfilled' ? mm.value : null,
+      powerball: jackpot(pb),
+      megamillions: jackpot(mm),
     });
   } catch (e) {
+    console.error('APIVerve error:', e.message);
     res.json({ powerball: null, megamillions: null });
   }
-}
-
-async function fetchPowerball() {
-  const r = await fetch('https://www.powerball.com/api/v1/estimates/powerball', {
-    headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }
-  });
-  const d = await r.json();
-  // Response has jackpotAmount or prize_amount
-  const amt = d?.jackpotAmount || d?.prize_amount || d?.data?.jackpotAmount;
-  if (amt) return formatAmount(amt);
-  // Try array response
-  if (Array.isArray(d) && d[0]) return formatAmount(d[0].jackpotAmount || d[0].prize_amount);
-  throw new Error('No PB jackpot found');
-}
-
-async function fetchMegaMillions() {
-  const r = await fetch('https://www.megamillions.com/api/v1/estimates/megamillions', {
-    headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }
-  });
-  const d = await r.json();
-  const amt = d?.jackpotAmount || d?.prize_amount || d?.data?.jackpotAmount;
-  if (amt) return formatAmount(amt);
-  if (Array.isArray(d) && d[0]) return formatAmount(d[0].jackpotAmount || d[0].prize_amount);
-  throw new Error('No MM jackpot found');
-}
-
-function formatAmount(raw) {
-  // raw could be "123000000" or 123000000 or "$123 million"
-  if (typeof raw === 'string' && raw.includes('$')) return raw;
-  const n = Number(String(raw).replace(/[^0-9.]/g, ''));
-  if (!n) throw new Error('Invalid amount');
-  if (n >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(1)} billion`;
-  if (n >= 1_000_000)     return `$${Math.round(n / 1_000_000)} million`;
-  return `$${n.toLocaleString()}`;
 }
