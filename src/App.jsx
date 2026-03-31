@@ -439,13 +439,9 @@ export default function LotteryTracker() {
 
   useEffect(() => {
     if (!ready) return;
-    (async () => {
-      try {
-        const text = await claudeFetch(`Search for current Powerball jackpot and Mega Millions jackpot today. Return ONLY JSON: {"powerball":"$XXX million","megamillions":"$XXX million"}`);
-        const m = text?.match(/\{[^}]+\}/);
-        if (m) { const j = JSON.parse(m[0]); setJackpots(j); sSet("lt7:jackpots", j); }
-      } catch {}
-    })();
+    fetch('/api/jackpots').then(r => r.json()).then(j => {
+      if (j && Object.keys(j).length) { setJackpots(j); sSet("lt7:jackpots", j); }
+    }).catch(() => {});
   }, [ready]);
 
   const doFetch = async () => {
